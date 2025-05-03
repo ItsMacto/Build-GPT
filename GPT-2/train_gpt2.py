@@ -165,6 +165,35 @@ class GPT(nn.Module):
 
         return model
     
-    
+
+num_return_sequences = 5
+max_length = 30
+
 model = GPT.from_pretrained('gpt2')
-print("it worked!")
+model.eval()
+model.to('mps')
+
+import tiktoken
+enc = tiktoken.get_encoding("gpt2")
+tokens = enc.encode("Hello, how are you doing today? I am doing well. I am happy to be here.")
+tokens = torch.tensor(tokens, dtype=torch.long)
+tokens = tokens.unsqueeze(0).repeat(num_return_sequences, 1) # (num_return_sequences, T)
+x = tokens.to('mps')
+
+
+torch.manual_seed(42)
+while x.size(1) < max_length:
+    with torch.no_grad():
+        logits = model(x)
+        logits = logits[:, -1, :]
+        
+        probs = F.softmax(logits, dim=-1)
+        topk_probs, topk_indices = torch.topk(5, dim=-1)
+        ix = torch.multinomial(topk_probs, num_samples=1)
+        xcol = topk_indices.gather(topk_indices, -1, ix)
+        x = torch.cat((x, xcol), dim=1)
+        
+for i in range(num_return_sequences):
+    tokens = x[i, :max_length].tolist()
+    decoded = enc.decode(tokens)
+    print(">", decoded)
